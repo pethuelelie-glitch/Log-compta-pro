@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthenticatedUtilisateursRouteImport } from './routes/_authenticated/utilisateurs'
 import { Route as AuthenticatedSauvegardesRouteImport } from './routes/_authenticated/sauvegardes'
 import { Route as AuthenticatedRecettesRouteImport } from './routes/_authenticated/recettes'
 import { Route as AuthenticatedRapportsRouteImport } from './routes/_authenticated/rapports'
@@ -36,6 +37,12 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedUtilisateursRoute =
+  AuthenticatedUtilisateursRouteImport.update({
+    id: '/utilisateurs',
+    path: '/utilisateurs',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSauvegardesRoute =
   AuthenticatedSauvegardesRouteImport.update({
     id: '/sauvegardes',
@@ -97,6 +104,7 @@ export interface FileRoutesByFullPath {
   '/rapports': typeof AuthenticatedRapportsRoute
   '/recettes': typeof AuthenticatedRecettesRoute
   '/sauvegardes': typeof AuthenticatedSauvegardesRoute
+  '/utilisateurs': typeof AuthenticatedUtilisateursRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -110,6 +118,7 @@ export interface FileRoutesByTo {
   '/rapports': typeof AuthenticatedRapportsRoute
   '/recettes': typeof AuthenticatedRecettesRoute
   '/sauvegardes': typeof AuthenticatedSauvegardesRoute
+  '/utilisateurs': typeof AuthenticatedUtilisateursRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -125,6 +134,7 @@ export interface FileRoutesById {
   '/_authenticated/rapports': typeof AuthenticatedRapportsRoute
   '/_authenticated/recettes': typeof AuthenticatedRecettesRoute
   '/_authenticated/sauvegardes': typeof AuthenticatedSauvegardesRoute
+  '/_authenticated/utilisateurs': typeof AuthenticatedUtilisateursRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -140,6 +150,7 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/recettes'
     | '/sauvegardes'
+    | '/utilisateurs'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -153,6 +164,7 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/recettes'
     | '/sauvegardes'
+    | '/utilisateurs'
   id:
     | '__root__'
     | '/'
@@ -167,6 +179,7 @@ export interface FileRouteTypes {
     | '/_authenticated/rapports'
     | '/_authenticated/recettes'
     | '/_authenticated/sauvegardes'
+    | '/_authenticated/utilisateurs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -197,6 +210,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/utilisateurs': {
+      id: '/_authenticated/utilisateurs'
+      path: '/utilisateurs'
+      fullPath: '/utilisateurs'
+      preLoaderRoute: typeof AuthenticatedUtilisateursRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/sauvegardes': {
       id: '/_authenticated/sauvegardes'
@@ -274,6 +294,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedRapportsRoute: typeof AuthenticatedRapportsRoute
   AuthenticatedRecettesRoute: typeof AuthenticatedRecettesRoute
   AuthenticatedSauvegardesRoute: typeof AuthenticatedSauvegardesRoute
+  AuthenticatedUtilisateursRoute: typeof AuthenticatedUtilisateursRoute
 }
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
@@ -286,6 +307,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedRapportsRoute: AuthenticatedRapportsRoute,
   AuthenticatedRecettesRoute: AuthenticatedRecettesRoute,
   AuthenticatedSauvegardesRoute: AuthenticatedSauvegardesRoute,
+  AuthenticatedUtilisateursRoute: AuthenticatedUtilisateursRoute,
 }
 
 const AuthenticatedRouteRouteWithChildren =

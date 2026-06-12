@@ -12,7 +12,13 @@ type AuthCtx = {
   signOut: () => Promise<void>;
 };
 
-const Ctx = createContext<AuthCtx>({ user: null, session: null, role: null, loading: true, signOut: async () => {} });
+const Ctx = createContext<AuthCtx>({
+  user: null,
+  session: null,
+  role: null,
+  loading: true,
+  signOut: async () => {},
+});
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -20,11 +26,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_evt, sess) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_evt, sess) => {
       setSession(sess);
       if (sess?.user) {
         setTimeout(async () => {
-          const { data } = await supabase.from("user_roles").select("role").eq("user_id", sess.user.id).maybeSingle();
+          const { data } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", sess.user.id)
+            .maybeSingle();
           setRole((data?.role as Role) ?? "comptable");
         }, 0);
       } else {
@@ -35,16 +47,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setLoading(false);
       if (session?.user) {
-        supabase.from("user_roles").select("role").eq("user_id", session.user.id).maybeSingle()
+        supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", session.user.id)
+          .maybeSingle()
           .then(({ data }) => setRole((data?.role as Role) ?? "comptable"));
       }
     });
     return () => subscription.unsubscribe();
   }, []);
 
-  const signOut = async () => { await supabase.auth.signOut(); };
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
 
-  return <Ctx.Provider value={{ user: session?.user ?? null, session, role, loading, signOut }}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={{ user: session?.user ?? null, session, role, loading, signOut }}>
+      {children}
+    </Ctx.Provider>
+  );
 }
 
 export const useAuth = () => useContext(Ctx);

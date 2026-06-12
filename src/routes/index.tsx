@@ -8,6 +8,11 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Chargement…</div>;
+  if (loading)
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Chargement…
+      </div>
+    );
   return <Navigate to={user ? "/dashboard" : "/auth"} replace />;
 }

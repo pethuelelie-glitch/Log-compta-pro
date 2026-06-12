@@ -17,7 +17,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: appCss },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "" },
-      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" },
+      {
+        rel: "stylesheet",
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap",
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -27,7 +30,12 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       <div className="text-center">
         <h1 className="text-6xl font-bold text-primary">404</h1>
         <p className="mt-2 text-muted-foreground">Page introuvable</p>
-        <a href="/" className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-primary-foreground">Accueil</a>
+        <a
+          href="/"
+          className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-primary-foreground"
+        >
+          Accueil
+        </a>
       </div>
     </div>
   ),
@@ -44,8 +52,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 function RootShell({ children }: { children: ReactNode }) {
   return (
     <html lang="fr">
-      <head><HeadContent /></head>
-      <body>{children}<Scripts /></body>
+      <head>
+        <HeadContent />
+      </head>
+      <body>
+        {children}
+        <Scripts />
+      </body>
     </html>
   );
 }

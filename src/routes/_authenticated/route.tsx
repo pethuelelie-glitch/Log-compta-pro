@@ -9,7 +9,16 @@ export const Route = createFileRoute("/_authenticated")({
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center text-muted-foreground">Chargement…</div>;
+  if (loading)
+    return (
+      <div className="flex min-h-screen items-center justify-center text-muted-foreground">
+        Chargement…
+      </div>
+    );
   if (!user) return <Navigate to="/auth" replace />;
-  return <AppShell><Outlet /></AppShell>;
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  );
 }

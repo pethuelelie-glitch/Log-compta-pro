@@ -1,5 +1,9 @@
 export const fmtMoney = (n: number | string) =>
-  new Intl.NumberFormat("fr-FR", { style: "currency", currency: "XAF", maximumFractionDigits: 0 }).format(Number(n) || 0);
+  new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency: "XAF",
+    maximumFractionDigits: 0,
+  }).format(Number(n) || 0);
 
 export const fmtDate = (d: string | Date) => {
   const dt = typeof d === "string" ? new Date(d) : d;
