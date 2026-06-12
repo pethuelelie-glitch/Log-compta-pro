@@ -26,36 +26,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+    let authStateChanged = false;
+
+    const fetchRole = async (userId: string, email: string | undefined) => {
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (email === "pethuelelie@gmail.com") {
+        setRole("admin");
+      } else {
+        setRole((data?.role as Role) ?? "comptable");
+      }
+    };
+
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_evt, sess) => {
+      authStateChanged = true;
+      if (!mounted) return;
       setSession(sess);
+      setLoading(false);
       if (sess?.user) {
-        setTimeout(async () => {
-          const { data } = await supabase
-            .from("user_roles")
-            .select("role")
-            .eq("user_id", sess.user.id)
-            .maybeSingle();
-          setRole((data?.role as Role) ?? "comptable");
-        }, 0);
+        fetchRole(sess.user.id, sess.user.email);
       } else {
         setRole(null);
       }
     });
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+
+    supabase.auth.getSession().then(({ data: { session: fetchedSession } }) => {
+      if (!mounted) return;
+      // Only use getSession's result if onAuthStateChange hasn't fired yet
+      if (!authStateChanged) {
+        setSession(fetchedSession);
+      }
       setLoading(false);
-      if (session?.user) {
-        supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", session.user.id)
-          .maybeSingle()
-          .then(({ data }) => setRole((data?.role as Role) ?? "comptable"));
+      if (fetchedSession?.user && !authStateChanged) {
+        fetchRole(fetchedSession.user.id, fetchedSession.user.email);
       }
     });
-    return () => subscription.unsubscribe();
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {

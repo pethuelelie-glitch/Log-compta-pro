@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  listRecettes, listDepenses,
-  type Recette, type Depense,
+  listRecettes, listDepenses, listClients, listFournisseurs,
+  type Recette, type Depense, type Client, type Fournisseur,
   CATEGORIES_RECETTES, CATEGORIES_DEPENSES, MODES_PAIEMENT,
 } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,8 +21,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { fmtMoney, fmtDate } from "@/lib/format";
-import { Plus, Pencil, Trash2, Search, CalendarRange, X, Tag, CreditCard, Hash } from "lucide-react";
+import { APP_NAME } from "@/lib/brand";
+import { Plus, Pencil, Trash2, Search, CalendarRange, X, Tag, CreditCard, Hash, User, FileText } from "lucide-react";
 import { toast } from "sonner";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 type Kind = "recettes" | "depenses";
 type Row = Recette | Depense;
@@ -33,6 +36,11 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
     queryKey: [kind],
     queryFn: kind === "recettes" ? listRecettes : listDepenses,
   });
+
+  const clientsQuery = useQuery({ queryKey: ["clients"], queryFn: listClients, enabled: kind === "recettes" });
+  const fournisseursQuery = useQuery({ queryKey: ["fournisseurs"], queryFn: listFournisseurs, enabled: kind === "depenses" });
+
+  const tiersList = kind === "recettes" ? (clientsQuery.data ?? []) : (fournisseursQuery.data ?? []);
 
   const [search, setSearch]         = useState("");
   const [dateFrom, setDateFrom]     = useState("");
@@ -45,10 +53,12 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
   const categories = kind === "recettes" ? CATEGORIES_RECETTES : CATEGORIES_DEPENSES;
 
   const filtered = (query.data ?? []).filter((r) => {
+    const tierName = (r as Recette).client?.nom || (r as Depense).fournisseur?.nom || "";
     const matchSearch =
       r.description.toLowerCase().includes(search.toLowerCase()) ||
       (r.reference ?? "").toLowerCase().includes(search.toLowerCase()) ||
       (r.categorie ?? "").toLowerCase().includes(search.toLowerCase()) ||
+      tierName.toLowerCase().includes(search.toLowerCase()) ||
       String(r.montant).includes(search);
     const matchFrom = !dateFrom || r.date >= dateFrom;
     const matchTo   = !dateTo   || r.date <= dateTo;
@@ -75,8 +85,9 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
       categorie: string;
       mode_paiement: string;
       reference: string;
+      tier_id: string;
     }) => {
-      const body = {
+      const body: any = {
         date: payload.date,
         montant: payload.montant,
         description: payload.description,
@@ -84,6 +95,13 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
         mode_paiement: payload.mode_paiement || null,
         reference: payload.reference || null,
       };
+      
+      if (kind === "recettes") {
+        body.client_id = payload.tier_id === "none" ? null : payload.tier_id;
+      } else {
+        body.fournisseur_id = payload.tier_id === "none" ? null : payload.tier_id;
+      }
+
       if (payload.id) {
         const { error } = await supabase.from(kind).update(body).eq("id", payload.id);
         if (error) throw error;
@@ -113,6 +131,77 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const generateInvoice = (row: Recette) => {
+    if (!row.client) return;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFillColor(79, 70, 229);
+    doc.rect(0, 0, 210, 28, "F");
+    
+    // Logo "CV" box
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(14, 6, 12, 12, 2, 2, "F");
+    doc.setFontSize(9);
+    doc.setTextColor(79, 70, 229);
+    doc.setFont("helvetica", "bold");
+    doc.text("CV", 20, 14, { align: "center" });
+
+    // Titre
+    doc.setFontSize(16);
+    doc.setTextColor(255, 255, 255);
+    doc.text(APP_NAME, 30, 14);
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("Généré le " + new Date().toLocaleDateString("fr-FR"), 160, 24, { align: "center" });
+
+    // Title Facture
+    doc.setFontSize(22);
+    doc.setTextColor(30, 30, 30);
+    doc.setFont("helvetica", "bold");
+    doc.text("FACTURE", 14, 45);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Date : ${fmtDate(row.date)}`, 14, 53);
+    if (row.reference) doc.text(`Référence : ${row.reference}`, 14, 59);
+
+    // Client infos
+    doc.setFont("helvetica", "bold");
+    doc.text("Facturé à :", 120, 45);
+    doc.setFont("helvetica", "normal");
+    doc.text(row.client.nom, 120, 52);
+    if (row.client.adresse) doc.text(row.client.adresse, 120, 58);
+    if (row.client.telephone) doc.text(`Tél : ${row.client.telephone}`, 120, 64);
+    if (row.client.email) doc.text(row.client.email, 120, 70);
+
+    // Table
+    autoTable(doc, {
+      startY: 85,
+      head: [["Description", "Catégorie", "Total"]],
+      body: [
+        [row.description, row.categorie || "—", fmtMoney(row.montant)],
+      ],
+      headStyles: { fillColor: [79, 70, 229] },
+      styles: { fontSize: 10 },
+      alternateRowStyles: { fillColor: [250, 250, 255] },
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY + 15;
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Total TTC : ${fmtMoney(row.montant)}`, 145, finalY);
+
+    if (row.mode_paiement) {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Mode de règlement : ${row.mode_paiement}`, 14, finalY);
+      doc.text(`Acquittée, net à payer 0 FCFA.`, 14, finalY + 6);
+    }
+    
+    doc.save(`Facture_${row.client.nom.replace(/\s/g, "_")}_${row.date}.pdf`);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -148,6 +237,7 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
             kind={kind}
             editing={editing}
             categories={[...categories]}
+            tiersList={tiersList}
             onSubmit={(v) => upsert.mutate({ ...v, id: editing?.id })}
             loading={upsert.isPending}
           />
@@ -164,7 +254,7 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
         <CardContent>
           <div className="flex flex-wrap gap-3">
             <Input
-              placeholder="Rechercher description, référence, catégorie…"
+              placeholder="Recherche (description, référence, tiers...)"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-xs"
@@ -218,74 +308,99 @@ export function TransactionPage({ kind, title }: { kind: Kind; title: string }) 
                 <tr>
                   <th className="px-4 py-3 font-medium">Date</th>
                   <th className="px-4 py-3 font-medium">Référence</th>
+                  <th className="px-4 py-3 font-medium">Tiers lié</th>
                   <th className="px-4 py-3 font-medium">Description</th>
                   <th className="px-4 py-3 font-medium">Catégorie</th>
                   <th className="px-4 py-3 font-medium">Paiement</th>
                   <th className="px-4 py-3 font-medium text-right">Montant</th>
-                  <th className="px-4 py-3 font-medium text-right w-24">Actions</th>
+                  <th className="px-4 py-3 font-medium text-right w-32">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((row) => (
-                  <tr
-                    key={row.id}
-                    className="border-b last:border-0 hover:bg-accent/30 transition-colors"
-                  >
-                    <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                      {fmtDate(row.date)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.reference ? (
-                        <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
-                          {row.reference}
+                {filtered.map((row) => {
+                  const tierName = (row as Recette).client?.nom || (row as Depense).fournisseur?.nom;
+                  return (
+                    <tr
+                      key={row.id}
+                      className="border-b last:border-0 hover:bg-accent/30 transition-colors"
+                    >
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
+                        {fmtDate(row.date)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.reference ? (
+                          <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+                            {row.reference}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {tierName ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary/80">
+                            <User className="h-3 w-3" />
+                            {tierName}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 max-w-[200px]">
+                        <span className="truncate block">{row.description || "—"}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.categorie ? (
+                          <span className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+                            {row.categorie}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground/50 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground">
+                        {row.mode_paiement ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold">
+                        <span className={kind === "recettes" ? "text-success" : "text-destructive"}>
+                          {fmtMoney(row.montant)}
                         </span>
-                      ) : (
-                        <span className="text-muted-foreground/50">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 max-w-[200px]">
-                      <span className="truncate block">{row.description || "—"}</span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.categorie ? (
-                        <span className="inline-flex items-center rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
-                          {row.categorie}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground/50 text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {row.mode_paiement ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right font-semibold">
-                      <span className={kind === "recettes" ? "text-success" : "text-destructive"}>
-                        {fmtMoney(row.montant)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0"
-                        onClick={() => { setEditing(row); setOpenForm(true); }}
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0"
-                        onClick={() => setConfirmDel(row.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {kind === "recettes" && (row as Recette).client && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 mr-1 text-primary hover:text-primary hover:bg-primary/10"
+                            onClick={() => generateInvoice(row as Recette)}
+                            title="Générer Facture PDF"
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => { setEditing(row); setOpenForm(true); }}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0"
+                          onClick={() => setConfirmDel(row.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
+                    <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">
                       <div className="flex flex-col items-center gap-2">
                         <Search className="h-8 w-8 opacity-30" />
                         <p>Aucune opération trouvée</p>
@@ -336,12 +451,14 @@ function FormDialog({
   kind,
   editing,
   categories,
+  tiersList,
   onSubmit,
   loading,
 }: {
   kind: Kind;
   editing: Row | null;
   categories: string[];
+  tiersList: (Client | Fournisseur)[];
   onSubmit: (v: {
     date: string;
     montant: number;
@@ -349,6 +466,7 @@ function FormDialog({
     categorie: string;
     mode_paiement: string;
     reference: string;
+    tier_id: string;
   }) => void;
   loading: boolean;
 }) {
@@ -358,6 +476,11 @@ function FormDialog({
   const [cat, setCat]           = useState(editing?.categorie ?? "");
   const [mode, setMode]         = useState(editing?.mode_paiement ?? "");
   const [ref, setRef]           = useState(editing?.reference ?? "");
+  
+  const initTier = kind === "recettes" 
+    ? (editing as Recette)?.client_id 
+    : (editing as Depense)?.fournisseur_id;
+  const [tierId, setTierId]     = useState(initTier ?? "none");
 
   return (
     <DialogContent className="max-w-lg">
@@ -369,7 +492,7 @@ function FormDialog({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          onSubmit({ date, montant: Number(montant), description: desc, categorie: cat, mode_paiement: mode, reference: ref });
+          onSubmit({ date, montant: Number(montant), description: desc, categorie: cat, mode_paiement: mode, reference: ref, tier_id: tierId });
         }}
         className="space-y-4 mt-2"
       >
@@ -398,13 +521,19 @@ function FormDialog({
 
         <div className="space-y-1.5">
           <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
-            <Hash className="h-3 w-3" /> Référence pièce
+            <User className="h-3 w-3" /> {kind === "recettes" ? "Client Lié (Optionnel)" : "Fournisseur Lié (Optionnel)"}
           </Label>
-          <Input
-            placeholder="Ex : FAC-2025-001"
-            value={ref}
-            onChange={(e) => setRef(e.target.value)}
-          />
+          <Select value={tierId} onValueChange={setTierId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Aucun" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">Aucun</SelectItem>
+              {tiersList.map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.nom}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-1.5">
@@ -450,6 +579,17 @@ function FormDialog({
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+            <Hash className="h-3 w-3" /> Référence pièce (Facture/Reçu)
+          </Label>
+          <Input
+            placeholder="Ex : FAC-2025-001"
+            value={ref}
+            onChange={(e) => setRef(e.target.value)}
+          />
         </div>
 
         <DialogFooter className="pt-2">

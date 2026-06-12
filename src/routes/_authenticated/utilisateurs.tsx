@@ -1,4 +1,4 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listUsers, updateUserRole, type UserProfile } from "@/lib/queries";
 import { useAuth } from "@/lib/auth";
@@ -14,19 +14,17 @@ import { toast } from "sonner";
 import { UsersRound, ShieldAlert } from "lucide-react";
 
 export const Route = createFileRoute("/_authenticated/utilisateurs")({
-  beforeLoad: ({ context }) => {
-    // Only admins can access this page
-    if ((context as { auth?: { role?: string } }).auth?.role !== "admin") {
-      throw redirect({ to: "/dashboard", replace: true });
-    }
-  },
   component: Utilisateurs,
   ssr: false,
 });
 
 function Utilisateurs() {
   const qc = useQueryClient();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, role } = useAuth();
+
+  if (role !== "admin") {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const query = useQuery({
     queryKey: ["users"],

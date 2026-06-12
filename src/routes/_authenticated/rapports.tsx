@@ -10,6 +10,7 @@ import { APP_NAME, APP_VERSION } from "@/lib/brand";
 import { FileDown, Printer, CalendarRange, TrendingUp, TrendingDown, Scale } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { Logo } from "@/components/Logo";
 import { useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_authenticated/rapports")({
@@ -52,10 +53,12 @@ function Rapports() {
     ...recettes.map((x) => ({
       id: x.id, date: x.date, type: "Produit", description: x.description,
       categorie: x.categorie, reference: x.reference, montant: Number(x.montant),
+      tier: x.client?.nom ?? null,
     })),
     ...depenses.map((x) => ({
       id: x.id, date: x.date, type: "Charge", description: x.description,
       categorie: x.categorie, reference: x.reference, montant: -Number(x.montant),
+      tier: x.fournisseur?.nom ?? null,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -74,15 +77,25 @@ function Rapports() {
     /* En-tête */
     doc.setFillColor(79, 70, 229);
     doc.rect(0, 0, 210, 28, "F");
+    
+    // Logo "CV" box
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(14, 6, 12, 12, 2, 2, "F");
+    doc.setFontSize(9);
+    doc.setTextColor(79, 70, 229);
+    doc.setFont("helvetica", "bold");
+    doc.text("CV", 20, 14, { align: "center" });
+
+    // Titre
     doc.setFontSize(16);
     doc.setTextColor(255, 255, 255);
-    doc.setFont("helvetica", "bold");
-    doc.text(APP_NAME, 14, 12);
+    doc.text(APP_NAME, 30, 14);
+    
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
-    doc.text("Rapport comptable — v" + APP_VERSION, 14, 18);
-    doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, 14, 23);
-    doc.text(dateLabel, 120, 18);
+    doc.text("Rapport comptable — v" + APP_VERSION, 14, 24);
+    doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, 85, 24);
+    doc.text(dateLabel, 160, 24, { align: "center" });
 
     /* Compte de résultat synthèse */
     let y = 36;
@@ -124,18 +137,19 @@ function Rapports() {
     doc.text("Journal comptable", 14, y);
     autoTable(doc, {
       startY: y + 4,
-      head: [["Date", "Réf.", "Type", "Description", "Catégorie", "Montant"]],
+      head: [["Date", "Réf.", "Type", "Tier", "Description", "Catégorie", "Montant"]],
       body: journal.map((j) => [
         fmtDate(j.date),
         j.reference ?? "—",
         j.type,
+        j.tier ?? "—",
         j.description || "—",
         j.categorie ?? "—",
         fmtMoney(Math.abs(j.montant)),
       ]),
       headStyles: { fillColor: [79, 70, 229], textColor: 255 },
       styles: { fontSize: 8 },
-      columnStyles: { 5: { halign: "right" } },
+      columnStyles: { 6: { halign: "right" } },
       alternateRowStyles: { fillColor: [250, 250, 255] },
       didParseCell: (data) => {
         if (data.section === "body" && data.column.index === 2) {
@@ -153,6 +167,15 @@ function Rapports() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {/* En-tête impression seulement */}
+      <div className="hidden print:flex items-center justify-between border-b pb-6 mb-6">
+        <Logo size="lg" showText={true} />
+        <div className="text-right text-sm text-muted-foreground">
+          <p>Rapport généré le {new Date().toLocaleDateString("fr-FR")}</p>
+          <p>Version {APP_VERSION}</p>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -258,6 +281,7 @@ function Rapports() {
                   <th className="px-3 py-2.5 font-medium">Date</th>
                   <th className="px-3 py-2.5 font-medium">Réf.</th>
                   <th className="px-3 py-2.5 font-medium">Nature</th>
+                  <th className="px-3 py-2.5 font-medium">Tier (Client/Fourn.)</th>
                   <th className="px-3 py-2.5 font-medium">Description</th>
                   <th className="px-3 py-2.5 font-medium">Catégorie</th>
                   <th className="px-3 py-2.5 font-medium text-right">Montant</th>
@@ -286,6 +310,9 @@ function Rapports() {
                         {j.type}
                       </span>
                     </td>
+                    <td className="px-3 py-2.5 text-muted-foreground max-w-[150px] truncate">
+                      {j.tier ?? "—"}
+                    </td>
                     <td className="px-3 py-2.5 text-muted-foreground max-w-[200px] truncate">
                       {j.description || "—"}
                     </td>
@@ -301,7 +328,7 @@ function Rapports() {
                 ))}
                 {journal.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-3 py-8 text-center text-muted-foreground">
                       Aucune écriture dans la période sélectionnée
                     </td>
                   </tr>

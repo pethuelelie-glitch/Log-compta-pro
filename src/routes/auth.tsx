@@ -43,7 +43,6 @@ function AuthPage() {
         if (error) throw error;
         toast.success("Bienvenue sur " + APP_NAME + " !");
       }
-      navigate({ to: "/dashboard", replace: true });
     } catch (err: unknown) {
       toast.error((err as Error).message ?? "Erreur d'authentification");
     } finally {

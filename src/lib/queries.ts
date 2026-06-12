@@ -1,5 +1,15 @@
 import { supabase } from "@/integrations/supabase/client";
 
+export type Client = {
+  id: string;
+  nom: string;
+  telephone: string | null;
+  adresse: string | null;
+  email: string | null;
+};
+
+export type Fournisseur = Client;
+
 export type Recette = {
   id: string;
   date: string;
@@ -8,6 +18,8 @@ export type Recette = {
   categorie?: string | null;
   mode_paiement?: string | null;
   reference?: string | null;
+  client_id?: string | null;
+  client?: Client | null;
 };
 
 export type Depense = {
@@ -18,17 +30,11 @@ export type Depense = {
   categorie?: string | null;
   mode_paiement?: string | null;
   reference?: string | null;
+  fournisseur_id?: string | null;
+  fournisseur?: Fournisseur | null;
 };
 
-export type Client = {
-  id: string;
-  nom: string;
-  telephone: string | null;
-  adresse: string | null;
-  email: string | null;
-};
-
-export type Fournisseur = Client;
+// (Déplacé plus haut)
 
 export type UserProfile = {
   id: string;
@@ -40,7 +46,7 @@ export type UserProfile = {
 export async function listRecettes(): Promise<Recette[]> {
   const { data, error } = await supabase
     .from("recettes")
-    .select("*")
+    .select("*, client:clients(*)")
     .order("date", { ascending: false });
   if (error) throw error;
   return (data ?? []) as unknown as Recette[];
@@ -49,7 +55,7 @@ export async function listRecettes(): Promise<Recette[]> {
 export async function listDepenses(): Promise<Depense[]> {
   const { data, error } = await supabase
     .from("depenses")
-    .select("*")
+    .select("*, fournisseur:fournisseurs(*)")
     .order("date", { ascending: false });
   if (error) throw error;
   return (data ?? []) as unknown as Depense[];
