@@ -16,8 +16,10 @@ import {
   Menu,
   X,
   ShieldCheck,
+  Sun,
+  Moon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -36,6 +38,36 @@ export function AppShell({ children }: { children: ReactNode }) {
   const { user, role, signOut } = useAuth();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [open, setOpen] = useState(false);
+
+  // ── Dark mode toggle ──
+  const [dark, setDark] = useState(() => {
+    if (typeof window !== "undefined") {
+      return document.documentElement.classList.contains("dark") ||
+        localStorage.getItem("theme") === "dark";
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (dark) {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+      localStorage.setItem("theme", "light");
+    }
+  }, [dark]);
+
+  // ── Heure en temps réel ──
+  const [time, setTime] = useState(() =>
+    new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+  );
+  useEffect(() => {
+    const id = setInterval(() => {
+      setTime(new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }));
+    }, 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -109,6 +141,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         {/* Footer utilisateur */}
         <div className="border-t border-sidebar-border/60 p-4 space-y-3">
+          {/* Heure + dark mode */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/40 font-mono tabular-nums">{time}</span>
+            <button
+              onClick={() => setDark((d) => !d)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+              title={dark ? "Passer en mode clair" : "Passer en mode sombre"}
+            >
+              {dark
+                ? <Sun className="h-3.5 w-3.5 text-amber-300" />
+                : <Moon className="h-3.5 w-3.5 text-white/70" />}
+            </button>
+          </div>
+
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/30 text-xs font-bold uppercase text-white shrink-0">
               {user?.email?.charAt(0) ?? "?"}
@@ -157,7 +203,15 @@ export function AppShell({ children }: { children: ReactNode }) {
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
           <Logo size="sm" showText={false} variant="dark" className="[&_svg]:!text-primary" />
-          <div className="w-9" />
+          {/* Dark mode sur mobile aussi */}
+          <button
+            onClick={() => setDark((d) => !d)}
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted hover:bg-accent transition-colors"
+          >
+            {dark
+              ? <Sun className="h-4 w-4 text-amber-500" />
+              : <Moon className="h-4 w-4 text-muted-foreground" />}
+          </button>
         </header>
 
         <main className="flex-1 p-4 md:p-8 overflow-auto print:p-0 print:overflow-visible animate-fade-in">

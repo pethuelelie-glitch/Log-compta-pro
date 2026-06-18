@@ -7,7 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { fmtMoney, fmtDate } from "@/lib/format";
 import { APP_NAME, APP_VERSION } from "@/lib/brand";
-import { FileDown, Printer, CalendarRange, TrendingUp, TrendingDown, Scale } from "lucide-react";
+import {
+  FileDown, Printer, CalendarRange, TrendingUp, TrendingDown, Scale,
+  Calendar, CalendarDays,
+} from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Logo } from "@/components/Logo";
@@ -24,6 +27,29 @@ function Rapports() {
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo,   setDateTo]   = useState("");
+
+  /* ── Raccourcis de période ── */
+  const applyPeriod = (period: "thisMonth" | "lastMonth" | "thisQuarter" | "thisYear") => {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    if (period === "thisMonth") {
+      setDateFrom(`${today.slice(0, 7)}-01`);
+      setDateTo(today);
+    } else if (period === "lastMonth") {
+      const lm  = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lme = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDateFrom(lm.toISOString().slice(0, 10));
+      setDateTo(lme.toISOString().slice(0, 10));
+    } else if (period === "thisQuarter") {
+      const q = Math.floor(now.getMonth() / 3);
+      const qStart = new Date(now.getFullYear(), q * 3, 1);
+      setDateFrom(qStart.toISOString().slice(0, 10));
+      setDateTo(today);
+    } else if (period === "thisYear") {
+      setDateFrom(`${now.getFullYear()}-01-01`);
+      setDateTo(today);
+    }
+  };
 
   const recettes = useMemo(() => {
     const all = r.data ?? [];
@@ -46,7 +72,13 @@ function Rapports() {
   const totalProduits = recettes.reduce((s, x) => s + Number(x.montant), 0);
   const totalCharges  = depenses.reduce((s, x) => s + Number(x.montant), 0);
   const resultat      = totalProduits - totalCharges;
-  const tauxMarge     = totalProduits > 0 ? ((resultat / totalProduits) * 100).toFixed(1) : "—";
+
+  // ✅ Fix : éviter NaN quand totalProduits = 0, retourner null pour signaler "non applicable"
+  const tauxMargeNum: number | null = totalProduits > 0
+    ? (resultat / totalProduits) * 100
+    : null;
+  const tauxMargeLabel = tauxMargeNum !== null ? `${tauxMargeNum.toFixed(1)} %` : "—";
+  const tauxMargePositif = tauxMargeNum === null ? true : tauxMargeNum >= 0;
 
   /* Journal chronologique */
   const journal = [
@@ -61,6 +93,30 @@ function Rapports() {
       tier: x.fournisseur?.nom ?? null,
     })),
   ].sort((a, b) => b.date.localeCompare(a.date));
+
+  /* Résumé par catégorie — Recettes */
+  const catRecettes = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const x of recettes) {
+      const k = x.categorie ?? "Non classé";
+      map.set(k, (map.get(k) ?? 0) + Number(x.montant));
+    }
+    return Array.from(map.entries())
+      .map(([name, total]) => ({ name, total, pct: totalProduits > 0 ? (total / totalProduits) * 100 : 0 }))
+      .sort((a, b) => b.total - a.total);
+  }, [recettes, totalProduits]);
+
+  /* Résumé par catégorie — Dépenses */
+  const catDepenses = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const x of depenses) {
+      const k = x.categorie ?? "Non classé";
+      map.set(k, (map.get(k) ?? 0) + Number(x.montant));
+    }
+    return Array.from(map.entries())
+      .map(([name, total]) => ({ name, total, pct: totalCharges > 0 ? (total / totalCharges) * 100 : 0 }))
+      .sort((a, b) => b.total - a.total);
+  }, [depenses, totalCharges]);
 
   /* ── Export PDF ── */
   const exportPDF = () => {
@@ -77,8 +133,7 @@ function Rapports() {
     /* En-tête */
     doc.setFillColor(79, 70, 229);
     doc.rect(0, 0, 210, 28, "F");
-    
-    // Logo "CV" box
+
     doc.setFillColor(255, 255, 255);
     doc.roundedRect(14, 6, 12, 12, 2, 2, "F");
     doc.setFontSize(9);
@@ -86,18 +141,17 @@ function Rapports() {
     doc.setFont("helvetica", "bold");
     doc.text("CV", 20, 14, { align: "center" });
 
-    // Titre
     doc.setFontSize(16);
     doc.setTextColor(255, 255, 255);
     doc.text(APP_NAME, 30, 14);
-    
+
     doc.setFontSize(9);
     doc.setFont("helvetica", "normal");
     doc.text("Rapport comptable — v" + APP_VERSION, 14, 24);
     doc.text(`Généré le ${new Date().toLocaleDateString("fr-FR")}`, 85, 24);
     doc.text(dateLabel, 160, 24, { align: "center" });
 
-    /* Compte de résultat synthèse */
+    /* Compte de résultat */
     let y = 36;
     doc.setFontSize(12);
     doc.setTextColor(79, 70, 229);
@@ -120,8 +174,11 @@ function Rapports() {
           },
         ],
         [
-          "Taux de marge",
-          { content: `${tauxMarge} %`, styles: { textColor: Number(tauxMarge) >= 0 ? [22, 163, 74] : [220, 38, 38] } },
+          "Taux de marge nette",
+          {
+            content: tauxMargeLabel,
+            styles: { textColor: tauxMargePositif ? [22, 163, 74] : [220, 38, 38] },
+          },
         ],
       ],
       headStyles: { fillColor: [79, 70, 229], textColor: 255, fontStyle: "bold" },
@@ -181,7 +238,7 @@ function Rapports() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Rapports comptables</h1>
           <p className="text-muted-foreground mt-1">
-            Journal, compte de résultat et analyses
+            Journal, compte de résultat et analyses par catégorie
           </p>
         </div>
         <div className="flex gap-2 print:hidden">
@@ -198,7 +255,27 @@ function Rapports() {
 
       {/* Filtre période */}
       <Card className="print:hidden">
-        <CardContent className="py-4">
+        <CardContent className="py-4 space-y-3">
+          {/* Raccourcis */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Raccourcis :</span>
+            {[
+              { label: "Ce mois", period: "thisMonth" as const, icon: CalendarDays },
+              { label: "Mois dernier", period: "lastMonth" as const, icon: Calendar },
+              { label: "Ce trimestre", period: "thisQuarter" as const, icon: CalendarRange },
+              { label: "Cette année", period: "thisYear" as const, icon: Calendar },
+            ].map(({ label, period }) => (
+              <button
+                key={period}
+                onClick={() => applyPeriod(period)}
+                className="text-xs px-3 py-1.5 rounded-full border border-border hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all font-medium text-muted-foreground"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Dates manuelles */}
           <div className="flex flex-wrap items-center gap-4">
             <CalendarRange className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="flex items-center gap-2">
@@ -238,20 +315,8 @@ function Rapports() {
 
       {/* KPI résumé */}
       <div className="grid gap-4 md:grid-cols-4">
-        <Stat
-          icon={TrendingUp}
-          label="Total des produits"
-          value={fmtMoney(totalProduits)}
-          color="text-success"
-          bg="bg-success/8"
-        />
-        <Stat
-          icon={TrendingDown}
-          label="Total des charges"
-          value={fmtMoney(totalCharges)}
-          color="text-destructive"
-          bg="bg-destructive/8"
-        />
+        <Stat icon={TrendingUp}   label="Total des produits" value={fmtMoney(totalProduits)} color="text-success"     bg="bg-success/8" />
+        <Stat icon={TrendingDown} label="Total des charges"  value={fmtMoney(totalCharges)}  color="text-destructive" bg="bg-destructive/8" />
         <Stat
           icon={Scale}
           label="Résultat net"
@@ -262,10 +327,130 @@ function Rapports() {
         <Stat
           icon={TrendingUp}
           label="Taux de marge"
-          value={`${tauxMarge} %`}
-          color={Number(tauxMarge) >= 0 ? "text-success" : "text-destructive"}
-          bg={Number(tauxMarge) >= 0 ? "bg-success/8" : "bg-destructive/8"}
+          value={tauxMargeLabel}
+          color={tauxMargePositif ? "text-success" : "text-destructive"}
+          bg={tauxMargePositif ? "bg-success/8" : "bg-destructive/8"}
         />
+      </div>
+
+      {/* Compte de résultat */}
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Scale className="h-4 w-4 text-primary" />
+            Compte de résultat
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <table className="w-full text-sm">
+            <tbody>
+              <tr className="border-b">
+                <td className="py-3 text-muted-foreground font-medium">
+                  Produits (recettes encaissées)
+                </td>
+                <td className="text-right font-semibold text-success text-base">
+                  + {fmtMoney(totalProduits)}
+                </td>
+              </tr>
+              <tr className="border-b">
+                <td className="py-3 text-muted-foreground font-medium">
+                  Charges (dépenses décaissées)
+                </td>
+                <td className="text-right font-semibold text-destructive text-base">
+                  − {fmtMoney(totalCharges)}
+                </td>
+              </tr>
+              <tr className="border-b bg-muted/20">
+                <td className="py-3 font-bold">Résultat net (bénéfice / perte)</td>
+                <td
+                  className={`text-right font-bold text-xl ${
+                    resultat >= 0 ? "text-success" : "text-destructive"
+                  }`}
+                >
+                  {resultat >= 0 ? "+" : ""}{fmtMoney(resultat)}
+                </td>
+              </tr>
+              <tr>
+                <td className="py-3 text-muted-foreground">Taux de marge nette</td>
+                <td className={`text-right font-bold ${tauxMargePositif ? "text-success" : "text-destructive"}`}>
+                  {tauxMargeLabel}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="mt-3 text-xs text-muted-foreground italic">
+            ※ Ce compte de résultat est établi selon la méthode des encaissements/décaissements (comptabilité de caisse).
+          </p>
+        </CardContent>
+      </Card>
+
+      {/* Répartition par catégorie */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Produits par catégorie */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="h-4 w-4 text-success" />
+              Produits par catégorie
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {catRecettes.length === 0 ? (
+              <p className="text-center text-muted-foreground text-sm py-4">Aucune donnée</p>
+            ) : (
+              <div className="space-y-3">
+                {catRecettes.map((cat) => (
+                  <div key={cat.name}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium truncate max-w-[180px]">{cat.name}</span>
+                      <span className="text-success font-semibold shrink-0 ml-2">{fmtMoney(cat.total)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-success transition-all duration-500"
+                        style={{ width: `${cat.pct}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{cat.pct.toFixed(1)} % du total</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Charges par catégorie */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingDown className="h-4 w-4 text-destructive" />
+              Charges par catégorie
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {catDepenses.length === 0 ? (
+              <p className="text-center text-muted-foreground text-sm py-4">Aucune donnée</p>
+            ) : (
+              <div className="space-y-3">
+                {catDepenses.map((cat) => (
+                  <div key={cat.name}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="font-medium truncate max-w-[180px]">{cat.name}</span>
+                      <span className="text-destructive font-semibold shrink-0 ml-2">{fmtMoney(cat.total)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-destructive transition-all duration-500"
+                        style={{ width: `${cat.pct}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{cat.pct.toFixed(1)} % du total</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Journal comptable */}
@@ -321,7 +506,7 @@ function Rapports() {
                     </td>
                     <td className="px-3 py-2.5 text-right font-semibold">
                       <span className={j.type === "Produit" ? "text-success" : "text-destructive"}>
-                        {j.type === "Produit" ? "+" : "-"}{fmtMoney(Math.abs(j.montant))}
+                        {j.type === "Produit" ? "+" : "−"}{fmtMoney(Math.abs(j.montant))}
                       </span>
                     </td>
                   </tr>
@@ -338,67 +523,12 @@ function Rapports() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Compte de résultat */}
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Scale className="h-4 w-4 text-primary" />
-            Compte de résultat
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <table className="w-full text-sm">
-            <tbody>
-              <tr className="border-b">
-                <td className="py-3 text-muted-foreground font-medium">
-                  Produits (recettes encaissées)
-                </td>
-                <td className="text-right font-semibold text-success text-base">
-                  {fmtMoney(totalProduits)}
-                </td>
-              </tr>
-              <tr className="border-b">
-                <td className="py-3 text-muted-foreground font-medium">
-                  Charges (dépenses décaissées)
-                </td>
-                <td className="text-right font-semibold text-destructive text-base">
-                  {fmtMoney(totalCharges)}
-                </td>
-              </tr>
-              <tr className="border-b bg-muted/20">
-                <td className="py-3 font-bold">Résultat net (bénéfice / perte)</td>
-                <td
-                  className={`text-right font-bold text-xl ${
-                    resultat >= 0 ? "text-success" : "text-destructive"
-                  }`}
-                >
-                  {resultat >= 0 ? "+" : ""}{fmtMoney(resultat)}
-                </td>
-              </tr>
-              <tr>
-                <td className="py-3 text-muted-foreground">Taux de marge nette</td>
-                <td className={`text-right font-bold ${Number(tauxMarge) >= 0 ? "text-success" : "text-destructive"}`}>
-                  {tauxMarge} %
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          <p className="mt-3 text-xs text-muted-foreground italic">
-            ※ Ce compte de résultat est établi selon la méthode des encaissements/décaissements (comptabilité de caisse).
-          </p>
-        </CardContent>
-      </Card>
     </div>
   );
 }
 
 function Stat({
-  icon: Icon,
-  label,
-  value,
-  color,
-  bg,
+  icon: Icon, label, value, color, bg,
 }: {
   icon: React.ElementType;
   label: string;

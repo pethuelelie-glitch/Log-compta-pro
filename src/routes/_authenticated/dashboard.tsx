@@ -2,14 +2,15 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { listRecettes, listDepenses, listClients, listFournisseurs } from "@/lib/queries";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fmtMoney, fmtDate } from "@/lib/format";
+import { fmtMoney, fmtMonthShort } from "@/lib/format";
 import {
   ArrowDownCircle, ArrowUpCircle, Users, Truck, Wallet,
   TrendingUp, TrendingDown, BarChart3, Activity,
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell, Tooltip as RechTooltip,
+  LineChart, Line, CartesianGrid, Legend, PieChart, Pie, Cell,
+  Tooltip as RechTooltip,
 } from "recharts";
 import { useMemo } from "react";
 
@@ -32,15 +33,18 @@ function Dashboard() {
   const today      = new Date().toISOString().slice(0, 10);
   const thisMonth  = today.slice(0, 7);
   const prevMonth  = (() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - 1);
-    return d.toISOString().slice(0, 7);
+    const dt = new Date();
+    dt.setMonth(dt.getMonth() - 1);
+    return dt.toISOString().slice(0, 7);
   })();
+
+  // Nom du mois courant en clair
+  const nomMoisCourant = new Date().toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
   const totalR = (r.data ?? []).reduce((s, x) => s + Number(x.montant), 0);
   const totalD = (d.data ?? []).reduce((s, x) => s + Number(x.montant), 0);
   const solde  = totalR - totalD;
-  const tauxMarge = totalR > 0 ? ((solde / totalR) * 100).toFixed(1) : "0.0";
+  const tauxMarge = totalR > 0 ? ((solde / totalR) * 100).toFixed(1) : null;
 
   const rThisMonth = (r.data ?? []).filter((x) => x.date.startsWith(thisMonth)).reduce((s, x) => s + Number(x.montant), 0);
   const dThisMonth = (d.data ?? []).filter((x) => x.date.startsWith(thisMonth)).reduce((s, x) => s + Number(x.montant), 0);
@@ -52,19 +56,19 @@ function Dashboard() {
     ? (((rThisMonth - rPrevMonth) / rPrevMonth) * 100).toFixed(1)
     : null;
 
-  /* Graphique mensuel 6 mois */
+  /* Graphique mensuel 6 mois avec mois en clair */
   const monthly = useMemo(() => {
-    const map = new Map<string, { mois: string; recettes: number; depenses: number }>();
+    const map = new Map<string, { mois: string; moisLabel: string; recettes: number; depenses: number }>();
     const key  = (dt: string) => dt.slice(0, 7);
     for (const x of r.data ?? []) {
       const k = key(x.date);
-      const cur = map.get(k) ?? { mois: k, recettes: 0, depenses: 0 };
+      const cur = map.get(k) ?? { mois: k, moisLabel: fmtMonthShort(k), recettes: 0, depenses: 0 };
       cur.recettes += Number(x.montant);
       map.set(k, cur);
     }
     for (const x of d.data ?? []) {
       const k = key(x.date);
-      const cur = map.get(k) ?? { mois: k, recettes: 0, depenses: 0 };
+      const cur = map.get(k) ?? { mois: k, moisLabel: fmtMonthShort(k), recettes: 0, depenses: 0 };
       cur.depenses += Number(x.montant);
       map.set(k, cur);
     }
@@ -94,13 +98,21 @@ function Dashboard() {
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 8);
 
+  const isLoading = r.isLoading || d.isLoading;
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Tableau de bord</h1>
-        <p className="text-muted-foreground mt-1">
-          Vue d'ensemble de votre activité comptable
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Tableau de bord</h1>
+          <p className="text-muted-foreground mt-1">
+            Vue d'ensemble · <span className="capitalize">{nomMoisCourant}</span>
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+          <Activity className="h-3.5 w-3.5" />
+          <span>Données en temps réel</span>
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -108,7 +120,7 @@ function Dashboard() {
         <StatCard
           icon={ArrowDownCircle}
           label="Total Recettes"
-          value={fmtMoney(totalR)}
+          value={isLoading ? "…" : fmtMoney(totalR)}
           sub="Tous les produits"
           color="text-success"
           bg="bg-success/8"
@@ -116,32 +128,32 @@ function Dashboard() {
         <StatCard
           icon={ArrowUpCircle}
           label="Total Dépenses"
-          value={fmtMoney(totalD)}
+          value={isLoading ? "…" : fmtMoney(totalD)}
           sub="Toutes les charges"
           color="text-destructive"
           bg="bg-destructive/8"
         />
         <StatCard
           icon={Wallet}
-          label="Résultat net"
-          value={fmtMoney(solde)}
-          sub={solde >= 0 ? "Bénéfice" : "Déficit"}
+          label="Trésorerie nette"
+          value={isLoading ? "…" : fmtMoney(solde)}
+          sub={solde >= 0 ? "Excédent" : "Déficit"}
           color={solde >= 0 ? "text-primary" : "text-destructive"}
           bg={solde >= 0 ? "bg-primary/8" : "bg-destructive/8"}
         />
         <StatCard
           icon={solde >= 0 ? TrendingUp : TrendingDown}
           label="Taux de marge"
-          value={`${tauxMarge} %`}
+          value={tauxMarge !== null ? `${tauxMarge} %` : "—"}
           sub="Résultat / Recettes"
-          color={Number(tauxMarge) >= 0 ? "text-success" : "text-destructive"}
-          bg={Number(tauxMarge) >= 0 ? "bg-success/8" : "bg-destructive/8"}
+          color={tauxMarge === null ? "text-muted-foreground" : Number(tauxMarge) >= 0 ? "text-success" : "text-destructive"}
+          bg={tauxMarge === null ? "bg-muted" : Number(tauxMarge) >= 0 ? "bg-success/8" : "bg-destructive/8"}
         />
         <StatCard
           icon={Activity}
-          label="Tx ce mois"
-          value={String(nbTxMonth)}
-          sub={`Recettes : ${fmtMoney(rThisMonth)}`}
+          label={`Tx ${nomMoisCourant.split(" ")[0]}`}
+          value={isLoading ? "…" : String(nbTxMonth)}
+          sub={`Prod. : ${fmtMoney(rThisMonth)}`}
           color="text-warning"
           bg="bg-warning/8"
           badge={
@@ -153,7 +165,7 @@ function Dashboard() {
         <StatCard
           icon={Users}
           label="Clients"
-          value={String(c.data?.length ?? 0)}
+          value={isLoading ? "…" : String(c.data?.length ?? 0)}
           sub="Enregistrés"
           color="text-secondary"
           bg="bg-secondary/8"
@@ -161,7 +173,7 @@ function Dashboard() {
         <StatCard
           icon={Truck}
           label="Fournisseurs"
-          value={String(f.data?.length ?? 0)}
+          value={isLoading ? "…" : String(f.data?.length ?? 0)}
           sub="Enregistrés"
           color="text-secondary"
           bg="bg-secondary/8"
@@ -182,8 +194,13 @@ function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={monthly} barGap={4}>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-                <XAxis dataKey="mois" fontSize={11} tick={{ fill: "oklch(0.50 0.04 262)" }} />
-                <YAxis fontSize={11} tick={{ fill: "oklch(0.50 0.04 262)" }} tickFormatter={(v) => fmtMoney(v).replace(/\s/g, "").replace("XAF", "").replace("FCFA", "")} />
+                {/* ✅ Utilise moisLabel (ex: "juin 26") au lieu de la clé brute "2026-06" */}
+                <XAxis dataKey="moisLabel" fontSize={11} tick={{ fill: "oklch(0.50 0.04 262)" }} />
+                <YAxis
+                  fontSize={11}
+                  tick={{ fill: "oklch(0.50 0.04 262)" }}
+                  tickFormatter={(v) => fmtMoney(v).replace(/\s/g, "").replace("FCFA", "")}
+                />
                 <Tooltip
                   formatter={(v: number, name: string) => [fmtMoney(v), name === "recettes" ? "Produits" : "Charges"]}
                   contentStyle={{ borderRadius: "8px", fontSize: "12px" }}
@@ -267,7 +284,7 @@ function Dashboard() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={monthly}>
               <CartesianGrid strokeDasharray="3 3" opacity={0.25} />
-              <XAxis dataKey="mois" fontSize={11} tick={{ fill: "oklch(0.50 0.04 262)" }} />
+              <XAxis dataKey="moisLabel" fontSize={11} tick={{ fill: "oklch(0.50 0.04 262)" }} />
               <YAxis fontSize={11} tick={{ fill: "oklch(0.50 0.04 262)" }} />
               <Tooltip
                 formatter={(v: number, name: string) => [fmtMoney(v), name === "recettes" ? "Produits" : "Charges"]}
@@ -299,36 +316,51 @@ function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {recent.map((op) => (
-                  <tr key={`${op.type}-${op.id}`} className="border-b last:border-0 hover:bg-accent/20 transition-colors">
-                    <td className="px-3 py-2.5 text-muted-foreground">{fmtDate(op.date)}</td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                          op.type === "Recette"
-                            ? "bg-success/15 text-success"
-                            : "bg-destructive/15 text-destructive"
-                        }`}
-                      >
-                        {op.type === "Recette" ? "Produit" : "Charge"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{op.description || "—"}</td>
-                    <td className="px-3 py-2.5">
-                      {op.categorie ? (
-                        <span className="text-xs bg-accent text-accent-foreground px-1.5 py-0.5 rounded">
-                          {op.categorie}
-                        </span>
-                      ) : <span className="text-muted-foreground/40 text-xs">—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-right font-semibold">
-                      <span className={op.type === "Recette" ? "text-success" : "text-destructive"}>
-                        {op.type === "Recette" ? "+" : "-"}{fmtMoney(op.montant)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-                {recent.length === 0 && (
+                {isLoading
+                  ? Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={i} className="border-b">
+                        {Array.from({ length: 5 }).map((_, j) => (
+                          <td key={j} className="px-3 py-2.5">
+                            <div className="h-4 rounded bg-muted animate-pulse" />
+                          </td>
+                        ))}
+                      </tr>
+                    ))
+                  : recent.map((op) => (
+                      <tr key={`${op.type}-${op.id}`} className="border-b last:border-0 hover:bg-accent/20 transition-colors">
+                        <td className="px-3 py-2.5 text-muted-foreground whitespace-nowrap">
+                          {/* fmtDate corrigé — plus de décalage UTC */}
+                          {new Date(op.date + "T12:00:00").toLocaleDateString("fr-FR", {
+                            day: "2-digit", month: "2-digit", year: "numeric",
+                          })}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                              op.type === "Recette"
+                                ? "bg-success/15 text-success"
+                                : "bg-destructive/15 text-destructive"
+                            }`}
+                          >
+                            {op.type === "Recette" ? "Produit" : "Charge"}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-muted-foreground">{op.description || "—"}</td>
+                        <td className="px-3 py-2.5">
+                          {op.categorie ? (
+                            <span className="text-xs bg-accent text-accent-foreground px-1.5 py-0.5 rounded">
+                              {op.categorie}
+                            </span>
+                          ) : <span className="text-muted-foreground/40 text-xs">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-semibold">
+                          <span className={op.type === "Recette" ? "text-success" : "text-destructive"}>
+                            {op.type === "Recette" ? "+" : "−"}{fmtMoney(op.montant)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                {!isLoading && recent.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">
                       Aucune opération enregistrée
